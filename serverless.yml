@@ -6,6 +6,9 @@ provider:
   profile: deploy-aws
   region: us-east-1
 
+  environment:
+    TABLE_NAME: users
+
 functions:
 
   # NODE
@@ -20,9 +23,9 @@ functions:
     handler: node/updateUser.handler
     events:
       - http:
-          path: users
+          path: users/{id}
           method: put
-
+          
   # JAVA
   createUser:
     handler: com.example.CreateUserHandler
@@ -41,5 +44,5 @@ functions:
       artifact: ./java/target/user-api-1.0.jar
     events:
       - http:
-          path: users
+          path: users/{id}
           method: delete
