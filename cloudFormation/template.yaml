@@ -1,0 +1,459 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: User API - CloudFormation completo con API Gateway, DynamoDB privada, SQS y SNS con accesos restringidos
+
+Parameters:
+  S3Bucket:
+    Type: String
+    Default: user-api-lambdas-bucket
+
+Resources:
+
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: users
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  CreateUserQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: create-user-queue
+
+  CreateUserQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref CreateUserQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+          - Sid: AllowCreateUserLambdaSend
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt CreateUserRole.Arn
+            Action: sqs:SendMessage
+            Resource: !GetAtt CreateUserQueue.Arn
+
+          - Sid: AllowSendEmailLambdaReceive
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt SendEmailRole.Arn
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:GetQueueAttributes
+            Resource: !GetAtt CreateUserQueue.Arn
+
+  SendEmailTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: send-email-topic
+  
+  SendEmailTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref SendEmailTopic
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowSendEmailLambdaPublish
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt SendEmailRole.Arn
+            Action: sns:Publish
+            Resource: !Ref SendEmailTopic
+
+  EmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: sebas3004tian@gmail.com
+      TopicArn: !Ref SendEmailTopic
+
+  LambdaBasicLogs:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: lambda-basic-logs
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: "arn:aws:logs:*:*:*"
+
+  GetUsersRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: getUsersRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref LambdaBasicLogs
+      Policies:
+        - PolicyName: GetUsersPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:GetItem
+                Resource: !GetAtt UsersTable.Arn
+
+  CreateUserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: createUserRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref LambdaBasicLogs
+      Policies:
+        - PolicyName: CreateUserPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:PutItem
+                Resource: !GetAtt UsersTable.Arn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt CreateUserQueue.Arn
+
+  UpdateUserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: updateUserRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref LambdaBasicLogs
+      Policies:
+        - PolicyName: UpdateUserPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:UpdateItem
+                Resource: !GetAtt UsersTable.Arn
+
+  DeleteUserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: deleteUserRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref LambdaBasicLogs
+      Policies:
+        - PolicyName: DeleteUserPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:DeleteItem
+                Resource: !GetAtt UsersTable.Arn
+
+  SendEmailRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: sendEmailRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref LambdaBasicLogs
+      Policies:
+        - PolicyName: SendEmailPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt CreateUserQueue.Arn
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref SendEmailTopic
+
+  CreateUserLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: createUser
+      Runtime: java17
+      Handler: com.example.CreateUserHandler::handleRequest
+      Role: !GetAtt CreateUserRole.Arn
+      Timeout: 30
+      MemorySize: 512
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: user-api-1.0.jar
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref UsersTable
+          QUEUE_URL: !Ref CreateUserQueue
+
+  DeleteUserLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: deleteUser
+      Runtime: java17
+      Handler: com.example.DeleteUserHandler::handleRequest
+      Role: !GetAtt DeleteUserRole.Arn
+      Timeout: 30
+      MemorySize: 512
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: user-api-1.0.jar
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref UsersTable
+
+  GetUsersLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: getUsers
+      Runtime: nodejs18.x
+      Handler: getUsers.handler
+      Role: !GetAtt GetUsersRole.Arn
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: node-lambdas.zip
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref UsersTable
+
+  UpdateUserLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: updateUser
+      Runtime: nodejs18.x
+      Handler: updateUser.handler
+      Role: !GetAtt UpdateUserRole.Arn
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: node-lambdas.zip
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref UsersTable
+
+  SendEmailLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: sendEmail
+      Runtime: nodejs18.x
+      Handler: sendEmail.handler
+      Role: !GetAtt SendEmailRole.Arn
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: node-lambdas.zip
+      Environment:
+        Variables:
+          TOPIC_ARN: !Ref SendEmailTopic
+
+  SQSTrigger:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt CreateUserQueue.Arn
+      FunctionName: !GetAtt SendEmailLambda.Arn
+      BatchSize: 10
+      Enabled: true
+
+  UserApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: user-api
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  UsersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref UserApi
+      ParentId: !GetAtt UserApi.RootResourceId
+      PathPart: users
+
+  UserByIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref UserApi
+      ParentId: !Ref UsersResource
+      PathPart: "{id}"
+
+  GetUsersMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref UserApi
+      ResourceId: !Ref UsersResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
+          - LambdaArn: !GetAtt GetUsersLambda.Arn
+
+  CreateUserMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref UserApi
+      ResourceId: !Ref UsersResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
+          - LambdaArn: !GetAtt CreateUserLambda.Arn
+
+  UpdateUserMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref UserApi
+      ResourceId: !Ref UserByIdResource
+      HttpMethod: PUT
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
+          - LambdaArn: !GetAtt UpdateUserLambda.Arn
+
+  DeleteUserMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref UserApi
+      ResourceId: !Ref UserByIdResource
+      HttpMethod: DELETE
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
+          - LambdaArn: !GetAtt DeleteUserLambda.Arn
+
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - GetUsersMethod
+      - CreateUserMethod
+      - UpdateUserMethod
+      - DeleteUserMethod
+    Properties:
+      RestApiId: !Ref UserApi
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref UserApi
+      DeploymentId: !Ref ApiDeployment
+      StageName: prod
+
+
+  GetUsersLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt GetUsersLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UserApi}/*/GET/users"
+
+  CreateUserLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt CreateUserLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UserApi}/*/POST/users"
+
+  UpdateUserLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt UpdateUserLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UserApi}/*/PUT/users/*"
+
+  DeleteUserLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt DeleteUserLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UserApi}/*/DELETE/users/*"
+
+Outputs:
+
+  ApiBaseUrl:
+    Description: URL base del API Gateway (stage prod)
+    Value: !Sub "https://${UserApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+
+  GetUsersEndpoint:
+    Description: GET /users
+    Value: !Sub "https://${UserApi}.execute-api.${AWS::Region}.amazonaws.com/prod/users"
+
+  CreateUserEndpoint:
+    Description: POST /users
+    Value: !Sub "https://${UserApi}.execute-api.${AWS::Region}.amazonaws.com/prod/users"
+
+  UpdateUserEndpoint:
+    Description: PUT /users/{id}
+    Value: !Sub "https://${UserApi}.execute-api.${AWS::Region}.amazonaws.com/prod/users/{id}"
+
+  DeleteUserEndpoint:
+    Description: DELETE /users/{id}
+    Value: !Sub "https://${UserApi}.execute-api.${AWS::Region}.amazonaws.com/prod/users/{id}"
+
+  DynamoDBTableName:
+    Description: Nombre de la tabla DynamoDB
+    Value: !Ref UsersTable
+
+  SQSQueueUrl:
+    Description: URL de la cola SQS
+    Value: !Ref CreateUserQueue
+
+  SNSTopicArn:
+    Description: ARN del tópico SNS
+    Value: !Ref SendEmailTopic
