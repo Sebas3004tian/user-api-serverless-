@@ -17,13 +17,31 @@ public class DeleteUserHandler implements RequestHandler<Map<String, Object>, Ma
 
     private final String TABLE_NAME = System.getenv("TABLE_NAME");
 
+    private String extractUserId(Map<String, Object> input) {
+        Map<String, String> pathParams = (Map<String, String>) input.get("pathParameters");
+        return pathParams != null ? pathParams.get("id") : null;
+    }
+
+    private Map<String, AttributeValue> buildKey(String id) {
+        Map<String, AttributeValue> key = new HashMap<>();
+        key.put("id", AttributeValue.builder().s(id).build());
+        return key;
+    }
+
+    private void deleteUser(Map<String, AttributeValue> key) {
+        DeleteItemRequest request = DeleteItemRequest.builder()
+                .tableName(TABLE_NAME)
+                .key(key)
+                .build();
+
+        dynamoDb.deleteItem(request);
+    }
+
     @Override
     public Map<String, Object> handleRequest(Map<String, Object> input, Context context) {
 
         try {
-
-            Map<String, String> pathParams = (Map<String, String>) input.get("pathParameters");
-            String id = pathParams != null ? pathParams.get("id") : null;
+            String id = extractUserId(input);
 
             if (id == null) {
                 return Map.of(
@@ -32,15 +50,9 @@ public class DeleteUserHandler implements RequestHandler<Map<String, Object>, Ma
                 );
             }
 
-            Map<String, AttributeValue> key = new HashMap<>();
-            key.put("id", AttributeValue.builder().s(id).build());
+            Map<String, AttributeValue> key = buildKey(id);
 
-            DeleteItemRequest request = DeleteItemRequest.builder()
-                    .tableName(TABLE_NAME)
-                    .key(key)
-                    .build();
-
-            dynamoDb.deleteItem(request);
+            deleteUser(key);
 
             return Map.of(
                     "statusCode", 200,
