@@ -2,6 +2,8 @@ package com.example;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
+import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
+import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
@@ -12,7 +14,7 @@ import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 import java.util.HashMap;
 import java.util.Map;
 
-public class CreateUserHandler implements RequestHandler<Map<String, Object>, Map<String, Object>> {
+public class CreateUserHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
         private final DynamoDbClient dynamoDb = DynamoDbClient.builder()
                 .region(Region.US_EAST_1)
@@ -54,13 +56,13 @@ public class CreateUserHandler implements RequestHandler<Map<String, Object>, Ma
         }
 
         @Override
-        public Map<String, Object> handleRequest(Map<String, Object> input, Context context) {
+        public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
 
         try {
                 ObjectMapper mapper = new ObjectMapper();
 
                 Map<String, Object> body = mapper.readValue(
-                        (String) input.get("body"),
+                        input.getBody(),
                         Map.class
                 );
 
@@ -80,16 +82,14 @@ public class CreateUserHandler implements RequestHandler<Map<String, Object>, Ma
                 String messageJson = buildUserMessage(id, nombre, email);
                 sendMessageToSqs(messageJson);
 
-                return Map.of(
-                        "statusCode", 200,
-                        "body", "{\"message\":\"Usuario creado\"}"
-                );
+                return new APIGatewayProxyResponseEvent()
+                        .withStatusCode(200)
+                        .withBody("{\"message\":\"Usuario creado\"}");
 
         } catch (Exception e) {
-                return Map.of(
-                        "statusCode", 500,
-                        "body", "{\"error\":\"" + e.getMessage() + "\"}"
-                );
+                return new APIGatewayProxyResponseEvent()
+                        .withStatusCode(500)
+                        .withBody("{\"error\":\"" + e.getMessage() + "\"}");
         }
         }
 }

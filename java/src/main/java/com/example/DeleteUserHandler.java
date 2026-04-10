@@ -2,6 +2,8 @@ package com.example;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
+import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
+import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
@@ -9,7 +11,7 @@ import software.amazon.awssdk.services.dynamodb.model.*;
 import java.util.HashMap;
 import java.util.Map;
 
-public class DeleteUserHandler implements RequestHandler<Map<String, Object>, Map<String, Object>> {
+public class DeleteUserHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
     private final DynamoDbClient dynamoDb = DynamoDbClient.builder()
             .region(Region.US_EAST_1)
@@ -17,8 +19,8 @@ public class DeleteUserHandler implements RequestHandler<Map<String, Object>, Ma
 
     private final String TABLE_NAME = System.getenv("TABLE_NAME");
 
-    private String extractUserId(Map<String, Object> input) {
-        Map<String, String> pathParams = (Map<String, String>) input.get("pathParameters");
+    private String extractUserId(APIGatewayProxyRequestEvent input) {
+        Map<String, String> pathParams = input.getPathParameters();
         return pathParams != null ? pathParams.get("id") : null;
     }
 
@@ -38,32 +40,29 @@ public class DeleteUserHandler implements RequestHandler<Map<String, Object>, Ma
     }
 
     @Override
-    public Map<String, Object> handleRequest(Map<String, Object> input, Context context) {
+    public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
 
         try {
             String id = extractUserId(input);
 
             if (id == null) {
-                return Map.of(
-                        "statusCode", 400,
-                        "body", "{\"error\":\"El id es obligatorio\"}"
-                );
+                return new APIGatewayProxyResponseEvent()
+                        .withStatusCode(400)
+                        .withBody("{\"error\":\"El id es obligatorio\"}");
             }
 
             Map<String, AttributeValue> key = buildKey(id);
 
             deleteUser(key);
 
-            return Map.of(
-                    "statusCode", 200,
-                    "body", "{\"message\":\"Usuario eliminado\"}"
-            );
+            return new APIGatewayProxyResponseEvent()
+                    .withStatusCode(200)
+                    .withBody("{\"message\":\"Usuario eliminado\"}");
 
         } catch (Exception e) {
-            return Map.of(
-                    "statusCode", 500,
-                    "body", "{\"error\":\"" + e.getMessage() + "\"}"
-            );
+            return new APIGatewayProxyResponseEvent()
+                    .withStatusCode(500)
+                    .withBody("{\"error\":\"" + e.getMessage() + "\"}");
         }
     }
 }
