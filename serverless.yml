@@ -8,12 +8,104 @@ provider:
 
   environment:
     TABLE_NAME: users
+    QUEUE_URL: https://sqs.us-east-1.amazonaws.com/992382566946/create-user-queue
+
+resources:
+  Resources:
+
+    GetUsersRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: getUsersRole
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: GetUsersPolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:Scan
+                    - dynamodb:GetItem
+                  Resource: arn:aws:dynamodb:us-east-1:992382566946:table/users
+
+    CreateUserRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: createUserRole
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: CreateUserPolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:PutItem
+                  Resource: arn:aws:dynamodb:us-east-1:992382566946:table/users
+                - Effect: Allow
+                  Action:
+                    - sqs:SendMessage
+                  Resource: arn:aws:sqs:us-east-1:992382566946:create-user-queue
+
+    UpdateUserRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: updateUserRole
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: UpdateUserPolicy
+            PolicyDocument:
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:UpdateItem
+                  Resource: arn:aws:dynamodb:us-east-1:992382566946:table/users
+
+    DeleteUserRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: deleteUserRole
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: DeleteUserPolicy
+            PolicyDocument:
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:DeleteItem
+                  Resource: arn:aws:dynamodb:us-east-1:992382566946:table/users
 
 functions:
 
   # NODE
   getUsers:
     handler: node/getUsers.handler
+    role: GetUsersRole
     events:
       - http:
           path: users
@@ -21,6 +113,7 @@ functions:
 
   updateUser:
     handler: node/updateUser.handler
+    role: UpdateUserRole
     events:
       - http:
           path: users/{id}
@@ -29,6 +122,7 @@ functions:
   # JAVA
   createUser:
     handler: com.example.CreateUserHandler
+    role: CreateUserRole
     runtime: java17
     package:
       artifact: ./java/target/user-api-1.0.jar
@@ -39,6 +133,7 @@ functions:
 
   deleteUser:
     handler: com.example.DeleteUserHandler
+    role: DeleteUserRole
     runtime: java17
     package:
       artifact: ./java/target/user-api-1.0.jar
