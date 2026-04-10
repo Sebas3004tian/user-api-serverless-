@@ -9,6 +9,7 @@ provider:
   environment:
     TABLE_NAME: users
     QUEUE_URL: https://sqs.us-east-1.amazonaws.com/992382566946/create-user-queue
+    TOPIC_ARN: arn:aws:sns:us-east-1:992382566946:send-email-topic
 
 resources:
   Resources:
@@ -100,6 +101,32 @@ resources:
                     - dynamodb:DeleteItem
                   Resource: arn:aws:dynamodb:us-east-1:992382566946:table/users
 
+    SendEmailRole:
+        Type: AWS::IAM::Role
+        Properties:
+          RoleName: enviarCorreosRole
+          AssumeRolePolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Principal:
+                  Service: lambda.amazonaws.com
+                Action: sts:AssumeRole
+          Policies:
+            - PolicyName: EnviarCorreosPolicy
+              PolicyDocument:
+                Statement:
+                  - Effect: Allow
+                    Action:
+                      - sqs:ReceiveMessage
+                      - sqs:DeleteMessage
+                      - sqs:GetQueueAttributes
+                    Resource: arn:aws:sqs:us-east-1:992382566946:create-user-queue
+                  - Effect: Allow
+                    Action:
+                      - sns:Publish
+                    Resource: arn:aws:sns:us-east-1:992382566946:send-email-topic
+
 functions:
 
   # NODE
@@ -118,6 +145,14 @@ functions:
       - http:
           path: users/{id}
           method: put
+
+  sendEmail:
+    handler: node/sendEmail.handler
+    role: SendEmailRole
+    events:
+      - sqs:
+          arn: arn:aws:sqs:us-east-1:992382566946:create-user-queue
+
           
   # JAVA
   createUser:
