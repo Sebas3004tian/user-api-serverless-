@@ -1,12 +1,15 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: User API - CloudFormation 
 
+# contamos con que el s3 ya esté con el codigo de las lambdas
 Parameters:
   S3Bucket:
     Type: String
     Default: user-api-lambdas-bucket
 
 Resources:
+
+# la DynamoDB
 
   UsersTable:
     Type: AWS::DynamoDB::Table
@@ -19,6 +22,8 @@ Resources:
       KeySchema:
         - AttributeName: id
           KeyType: HASH
+
+# Creacion del SQS con su politica
 
   CreateUserQueue:
     Type: AWS::SQS::Queue
@@ -50,6 +55,8 @@ Resources:
               - sqs:DeleteMessage
               - sqs:GetQueueAttributes
             Resource: !GetAtt CreateUserQueue.Arn
+
+# Creacion del SNS con su politica y suscripción
 
   SendEmailTopic:
     Type: AWS::SNS::Topic
@@ -91,6 +98,8 @@ Resources:
               - logs:CreateLogStream
               - logs:PutLogEvents
             Resource: "arn:aws:logs:*:*:*"
+
+# los roles de las funciones
 
   GetUsersRole:
     Type: AWS::IAM::Role
@@ -213,6 +222,8 @@ Resources:
                 Action: sns:Publish
                 Resource: !Ref SendEmailTopic
 
+# las funciones
+
   CreateUserLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -288,6 +299,8 @@ Resources:
         Variables:
           TOPIC_ARN: !Ref SendEmailTopic
 
+# se configura el trigger del SQS
+
   SQSTrigger:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
@@ -296,6 +309,8 @@ Resources:
       BatchSize: 10
       Enabled: true
 
+# se crea el api gateway
+
   UserApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -303,6 +318,8 @@ Resources:
       EndpointConfiguration:
         Types:
           - REGIONAL
+
+# recursos para crear los paths de los metodos del api gateway
 
   UsersResource:
     Type: AWS::ApiGateway::Resource
@@ -317,6 +334,8 @@ Resources:
       RestApiId: !Ref UserApi
       ParentId: !Ref UsersResource
       PathPart: "{id}"
+
+# creacion de los methodos del api gateway
 
   GetUsersMethod:
     Type: AWS::ApiGateway::Method
@@ -374,6 +393,8 @@ Resources:
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
           - LambdaArn: !GetAtt DeleteUserLambda.Arn
 
+# deploy para que los endpoints queden disponibles
+
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -384,6 +405,8 @@ Resources:
     Properties:
       RestApiId: !Ref UserApi
 
+# creamos el stage del api
+
   ApiStage:
     Type: AWS::ApiGateway::Stage
     Properties:
@@ -391,6 +414,7 @@ Resources:
       DeploymentId: !Ref ApiDeployment
       StageName: prod
 
+# realciones entre los lambdas y los endpoints del api gateway, que el lambda se deje ejecutar por los methodds
 
   GetUsersLambdaPermission:
     Type: AWS::Lambda::Permission
@@ -424,10 +448,12 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UserApi}/*/DELETE/users/*"
 
+#Distintos endpoints utiles
+
 Outputs:
 
   ApiBaseUrl:
-    Description: URL base del API Gateway (stage prod)
+    Description: URL base del API Gateway en stage prod
     Value: !Sub "https://${UserApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
 
   GetUsersEndpoint:
