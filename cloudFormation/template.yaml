@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: User API - CloudFormation completo con API Gateway, DynamoDB privada, SQS y SNS con accesos restringidos
+Description: User API - CloudFormation 
 
 Parameters:
   S3Bucket:
