@@ -155,7 +155,6 @@ functions:
       - sqs:
           arn: ${self:provider.environment.QUEUE_ARN}
 
-          
   # JAVA
   createUser:
     handler: com.example.CreateUserHandler
