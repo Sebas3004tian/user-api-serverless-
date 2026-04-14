@@ -2,13 +2,15 @@ service: user-api
 
 provider:
   name: aws
-  runtime: nodejs18.x
+  runtime: nodejs20.x
   profile: deploy-aws
   region: us-east-1
 
   environment:
     TABLE_NAME: users
+    TABLE_ARN: arn:aws:dynamodb:us-east-1:992382566946:table/users
     QUEUE_URL: https://sqs.us-east-1.amazonaws.com/992382566946/create-user-queue
+    QUEUE_ARN: arn:aws:sqs:us-east-1:992382566946:create-user-queue
     TOPIC_ARN: arn:aws:sns:us-east-1:992382566946:send-email-topic
 
 resources:
@@ -34,7 +36,7 @@ resources:
                   Action:
                     - dynamodb:Scan
                     - dynamodb:GetItem
-                  Resource: arn:aws:dynamodb:us-east-1:992382566946:table/users
+                  Resource: ${self:provider.environment.TABLE_ARN}
 
     CreateUserRole:
       Type: AWS::IAM::Role
@@ -55,11 +57,11 @@ resources:
                 - Effect: Allow
                   Action:
                     - dynamodb:PutItem
-                  Resource: arn:aws:dynamodb:us-east-1:992382566946:table/users
+                  Resource: ${self:provider.environment.TABLE_ARN}
                 - Effect: Allow
                   Action:
                     - sqs:SendMessage
-                  Resource: arn:aws:sqs:us-east-1:992382566946:create-user-queue
+                  Resource: ${self:provider.environment.QUEUE_ARN}
 
     UpdateUserRole:
       Type: AWS::IAM::Role
@@ -79,7 +81,7 @@ resources:
                 - Effect: Allow
                   Action:
                     - dynamodb:UpdateItem
-                  Resource: arn:aws:dynamodb:us-east-1:992382566946:table/users
+                  Resource: ${self:provider.environment.TABLE_ARN}
 
     DeleteUserRole:
       Type: AWS::IAM::Role
@@ -99,7 +101,7 @@ resources:
                 - Effect: Allow
                   Action:
                     - dynamodb:DeleteItem
-                  Resource: arn:aws:dynamodb:us-east-1:992382566946:table/users
+                  Resource: ${self:provider.environment.TABLE_ARN}
 
     SendEmailRole:
         Type: AWS::IAM::Role
@@ -121,11 +123,11 @@ resources:
                       - sqs:ReceiveMessage
                       - sqs:DeleteMessage
                       - sqs:GetQueueAttributes
-                    Resource: arn:aws:sqs:us-east-1:992382566946:create-user-queue
+                    Resource: ${self:provider.environment.QUEUE_ARN}
                   - Effect: Allow
                     Action:
                       - sns:Publish
-                    Resource: arn:aws:sns:us-east-1:992382566946:send-email-topic
+                    Resource: ${self:provider.environment.TOPIC_ARN}
 
 functions:
 
@@ -151,7 +153,7 @@ functions:
     role: SendEmailRole
     events:
       - sqs:
-          arn: arn:aws:sqs:us-east-1:992382566946:create-user-queue
+          arn: ${self:provider.environment.QUEUE_ARN}
 
           
   # JAVA
